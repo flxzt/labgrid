@@ -150,9 +150,11 @@ class SSHConnection:
 
     @staticmethod
     def _get_ssh_base_args():
-        return ["-x", "-o", "LogLevel=ERROR", "-o", "PasswordAuthentication=no"]
+        """must only return '-o' arguments, because it will be used by ssh *and* scp"""
+        return ["-o", "ForwardX11=no", "-o", "LogLevel=ERROR", "-o", "PasswordAuthentication=no"]
 
     def _get_ssh_control_args(self):
+        """must only return '-o' arguments, because it will be used by ssh *and* scp"""
         if self._socket:
             return [
                 "-o", "ControlMaster=no",
@@ -322,8 +324,9 @@ class SSHConnection:
     @_check_connected
     def put_file(self, local_file, remote_path):
         """Put a file onto the remote host"""
-        complete_cmd = ["rsync", "--compress", "--sparse", "--copy-links", "--verbose", "--progress", "--times", "-e",
-                        " ".join(['ssh'] + self._get_ssh_args())]
+        #complete_cmd = ["rsync", "--compress", "--sparse", "--copy-links", "--verbose", "--progress", "--times", "-e",
+        #                " ".join(['ssh'] + self._get_ssh_args())]
+        complete_cmd = ["scp", "-C", "-v", *self._get_ssh_args()]
         complete_cmd += [
             f"{local_file}",
             f"{self.host}:{remote_path}"
@@ -439,7 +442,8 @@ class SSHConnection:
             "-o", "ControlMaster=yes",
             "-o", f"ControlPath={control}",
             # We don't want to ask the user to confirm host keys here.
-            "-o", "StrictHostKeyChecking=yes",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "UserKnownHostsFile=/dev/null",
             self.host,
         ]
 
