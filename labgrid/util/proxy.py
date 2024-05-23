@@ -5,6 +5,7 @@ from urllib.parse import urlsplit, urlunsplit, urlparse
 from .ssh import sshmanager
 
 from ..resource.common import Resource
+from ..util import Host
 
 __all__ = ['proxymanager']
 
@@ -58,12 +59,12 @@ class ProxyManager:
             proxy_required = extra.get('proxy_required')
             proxy = extra.get('proxy')
             if proxy_required:
-                port = sshmanager.request_forward(proxy, host, port)
+                port = sshmanager.request_forward(proxy, Host(host, sshpassword=res.sshpassword, jumps=res.jumps), port)
                 host = 'localhost'
                 return host, port
 
         if cls._force_proxy:
-            port = sshmanager.request_forward(cls._force_proxy, host, port)
+            port = sshmanager.request_forward(cls._force_proxy, Host(host, sshpassword=res.sshpassword, jumps=res.jumps), port)
             host = 'localhost'
 
         return host, port
@@ -84,7 +85,7 @@ class ProxyManager:
             raise ProxyError(f"Invalid url: {url} does not contain a port and no default set")
 
         if cls._force_proxy:
-            port = sshmanager.request_forward(cls._force_proxy, hostname, port)
+            port = sshmanager.request_forward(cls._force_proxy, Host(hostname), port)
             hostname = 'localhost'
 
         if ':' in hostname:

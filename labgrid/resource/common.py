@@ -5,6 +5,7 @@ import attr
 
 from ..binding import BindingMixin
 from ..util.ssh import sshmanager
+from ..util.host import Host
 
 
 @attr.s(eq=False)
@@ -90,17 +91,21 @@ class NetworkResource(Resource):
     """
     host = attr.ib(validator=attr.validators.instance_of(str))
     sshpassword = attr.ib(default=None, validator=attr.validators.optional(attr.validators.instance_of(str)), kw_only=True)
+    jumps = attr.ib(default=None, validator=attr.validators.optional(attr.validators.instance_of(list)), kw_only=True)
 
     @property
     def command_prefix(self):
         host = self.host
         sshpassword = self.sshpassword
+        jumps = self.jumps
 
         if hasattr(self, 'extra'):
             if self.extra.get('proxy_required'):
                 host = self.extra.get('proxy')
 
-        conn = sshmanager.get(host, sshpassword)
+        host = Host(host, sshpassword=sshpassword, jumps=jumps)
+
+        conn = sshmanager.get(host)
         prefix = conn.get_prefix()
 
         return prefix + ['--']

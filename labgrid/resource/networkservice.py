@@ -11,3 +11,4 @@ class NetworkService(Resource):
     username = attr.ib(validator=attr.validators.instance_of(str))
     password = attr.ib(default='', validator=attr.validators.instance_of(str))
     port = attr.ib(default=22, validator=attr.validators.instance_of(int))
+    jumps = attr.ib(default=None, validator=attr.validators.optional(attr.validators.instance_of(list)), kw_only=True)

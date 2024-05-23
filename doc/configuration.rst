@@ -595,6 +595,7 @@ Arguments:
   - username (str): username used by SSH
   - password (str, default=""): password used by SSH
   - port (int, default=22): port used by SSH
+  - jumps (list[str]): List of hosts SSH jumps over to the remote system
 
 Used by:
   - `SSHDriver`_

@@ -8,6 +8,7 @@ import attr
 
 from .helper import get_user
 from .ssh import sshmanager
+from ..util import Host
 from ..resource.common import Resource, NetworkResource
 from ..driver.exception import ExecutionError
 
@@ -53,7 +54,7 @@ class ManagedFile:
             ExecutionError: if the SSH connection/copy fails
         """
         if isinstance(self.resource, NetworkResource):
-            host = self.resource.host
+            host = Host(host=self.resource.host, sshpassword=self.resource.sshpassword,jumps=self.resource.jumps)
             conn = sshmanager.open(host)
 
             if self._on_nfs(conn):

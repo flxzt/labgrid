@@ -59,6 +59,9 @@ class SSHDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol):
             self.ssh_prefix += ["-i", keyfile_path ]
         if not self._get_password():
             self.ssh_prefix += ["-o", "PasswordAuthentication=no"]
+        if self.networkservice.jumps is not None:
+            for jump in self.networkservice.jumps:
+                self.ssh_prefix += ["-o", f"ProxyJump={jump}"]
 
         self.control = self._start_own_master()
         self.ssh_prefix += ["-F", "none"]

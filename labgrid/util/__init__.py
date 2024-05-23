@@ -7,3 +7,4 @@ from .yaml import load, dump
 from .ssh import sshmanager
 from .helper import get_free_port, get_user, re_vt100
 from .version import labgrid_version
+from .host import Host
