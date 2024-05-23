@@ -42,7 +42,7 @@ class ProcessWrapper:
 
     @step(args=['command'], result=True, tag='process')
     def check_output(
-        self, command, *, print_on_silent_log=False, input=None, stdin=None, stderr=subprocess.STDOUT, timeout=None
+        self, command, *, print_on_silent_log=False, input=None, stdin=None, stderr=subprocess.STDOUT, timeout=None, shell=False
     ):  # pylint: disable=redefined-builtin
         """Run a command and supply the output to callback functions"""
 
@@ -65,9 +65,9 @@ class ProcessWrapper:
         elif stdin is not None:
             kwargs['stdin'] = stdin
 
-        process = subprocess.Popen(command, stderr=stderr, stdout=sfd, bufsize=0, **kwargs)
+        process = subprocess.Popen(command, stderr=stderr, stdout=sfd, bufsize=0, shell=shell, **kwargs)
 
-        logger.log(ProcessWrapper.loglevel, "[%d] command: %s", process.pid, " ".join(command))
+        logger.log(ProcessWrapper.loglevel, "[%d] command: %s", process.pid, repr(command))
 
         # do not register/unregister already registered print_callback
         if ProcessWrapper.print_callback in self.callbacks:

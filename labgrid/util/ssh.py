@@ -7,11 +7,13 @@ import os
 from select import select
 from functools import wraps
 from typing import Dict
+from typing import Dict
 
 import attr
 from ..driver.exception import ExecutionError
 
 from .helper import get_free_port, processwrapper
+from ..util.host import Host
 
 __all__ = ['sshmanager', 'SSHConnection', 'ForwardError']
 
@@ -25,7 +27,7 @@ class SSHConnectionManager:
     should not be directly instantiated, use the exported sshmanager from this
     module instead.
     """
-    _connections: 'Dict[str, SSHConnection]' = attr.ib(
+    _connections: 'Dict[Host, SSHConnection]' = attr.ib(
         default=attr.Factory(dict),
         init=False,
         validator=attr.validators.optional(attr.validators.instance_of(dict))
@@ -35,11 +37,11 @@ class SSHConnectionManager:
         self.logger = logging.getLogger(f"{self}")
         atexit.register(self.close_all)
 
-    def get(self, host: str):
+    def get(self, host: Host):
         """Retrieve or create a new connection to a given host
 
         Arguments:
-            host (str): host to retrieve the connection for
+            host (Host): host to retrieve the connection for
 
         Returns:
             :obj:`SSHConnection`: the SSHConnection for the host"""
@@ -72,27 +74,27 @@ class SSHConnectionManager:
     def remove_by_name(self, name):
         del self._connections[name]
 
-    def open(self, host):
+    def open(self, host: Host):
         return self.get(host)
 
-    def close(self, host):
+    def close(self, host: Host):
         con = self.get(host)
         con.disconnect()
         self.remove_connection(con)
 
-    def request_forward(self, host, dest, port):
+    def request_forward(self, host: Host, dest, port):
         con = self.get(host)
         return con.add_port_forward(dest, port)
 
-    def remove_forward(self, host, dest, port):
+    def remove_forward(self, host: Host, dest, port):
         con = self.get(host)
         con.remove_port_forward(dest, port)
 
-    def put_file(self, host, local_file, remote_file):
+    def put_file(self, host: Host, local_file, remote_file):
         con = self.get(host)
         con.put_file(local_file, remote_file)
 
-    def get_file(self, host, remote_file, local_file):
+    def get_file(self, host: Host, remote_file, local_file):
         con = self.get(host)
         con.get_file(remote_file, local_file)
 
@@ -148,20 +150,24 @@ class SSHConnection:
         self._keepalive = None
         atexit.register(self.cleanup)
 
-    @staticmethod
-    def _get_ssh_base_args():
-        return ["-x", "-o", "LogLevel=ERROR", "-o", "PasswordAuthentication=no"]
+    def _get_ssh_base_args(self):
+        args = ["-x", "-o", "LogLevel=ERROR"]
+        return args
+
 
     def _get_ssh_control_args(self):
+        args = []
         if self._socket:
             return [
                 "-o", "ControlMaster=no",
                 "-o", f"ControlPath={self._socket}",
             ]
-        return []
+        if self.host.jumps is not None and len(self.host.jumps) > 0:
+            args += ["-o", construct_jumps_arg(self.host.jumps)]
+        return args
 
     def _get_ssh_args(self):
-        args = SSHConnection._get_ssh_base_args()
+        args = self._get_ssh_base_args()
         args += self._get_ssh_control_args()
         return args
 
@@ -169,10 +175,10 @@ class SSHConnection:
         """Internal function which appends the control socket and checks if the
         connection is already open"""
         if self._check_external_master():
-            self._logger.info("Using existing SSH connection to %s", self.host)
+            self._logger.info("Using existing SSH connection to %s", self.host.host)
         else:
             self._start_own_master()
-            self._logger.info("Created new SSH connection to %s", self.host)
+            self._logger.info("Created new SSH connection to %s", self.host.host)
         self._start_keepalive()
         self._connected = True
 
@@ -183,19 +189,21 @@ class SSHConnection:
         if forward:
             for item in forward:
                 complete_cmd.append(item)
-        complete_cmd.append(self.host)
+        complete_cmd.append(self.host.host)
         self._logger.debug("Running control command: %s", " ".join(complete_cmd))
         subprocess.check_call(
-            complete_cmd,
+            " ".join(complete_cmd),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             timeout=2,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
 
     @_check_connected
     def get_prefix(self):
-        return ["ssh"] + self._get_ssh_args() + [self.host]
+        return ["ssh"] + self._get_ssh_args() + [self.host.host]
 
     @_check_connected
     def run(self, command, *, codec="utf-8", decodeerrors="strict",
@@ -225,7 +233,7 @@ class SSHConnection:
         complete_cmd = ["ssh"] + self._get_ssh_args()
         if force_tty:
             complete_cmd += ["-tt"]
-        complete_cmd += [self.host, command]
+        complete_cmd += [self.host.host, command]
         self._logger.debug("Sending command: %s", " ".join(complete_cmd))
         if stderr_merge:
             stderr_pipe = subprocess.STDOUT
@@ -233,8 +241,12 @@ class SSHConnection:
             stderr_pipe = subprocess.PIPE
         try:
             sub = subprocess.Popen(
-                complete_cmd, stdout=subprocess.PIPE, stderr=stderr_pipe,
-                stdin=subprocess.DEVNULL
+                " ".join(complete_cmd),
+                stdout=subprocess.PIPE,
+                stderr=stderr_pipe,
+                stdin=subprocess.DEVNULL,
+                # The ProxyCommand argument used for jumps needs this.
+                shell=True
             )
         except:
             raise ExecutionError(
@@ -310,29 +322,32 @@ class SSHConnection:
         """Get a file from the remote host"""
         complete_cmd = ["scp"] + self._get_ssh_control_args()
         complete_cmd += [
-            f"{self.host}:{remote_file}",
+            f"{self.host.host}:{remote_file}",
             f"{local_file}"
         ]
         self._logger.debug("Running command: %s", complete_cmd)
         subprocess.check_call(
-            complete_cmd,
+            " ".join(complete_cmd),
             stdin=subprocess.DEVNULL,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
 
     @_check_connected
     def put_file(self, local_file, remote_path):
         """Put a file onto the remote host"""
         complete_cmd = ["rsync", "--compress", "--sparse", "--copy-links", "--verbose", "--progress", "--times", "-e",
-                        " ".join(['ssh'] + self._get_ssh_args())]
+                        '"' + " ".join(['ssh'] + self._get_ssh_args()) + '"']
         complete_cmd += [
             f"{local_file}",
-            f"{self.host}:{remote_path}"
+            f"{self.host.host}:{remote_path}"
         ]
         self._logger.debug("Running command: %s", complete_cmd)
         processwrapper.check_output(
-            complete_cmd,
+            " ".join(complete_cmd),
             stdin=subprocess.DEVNULL,
-            print_on_silent_log=True
+            print_on_silent_log=True,
+            shell=True
         )
 
     @_check_connected
@@ -403,14 +418,20 @@ class SSHConnection:
         return self._connected and self._check_keepalive()
 
     def _check_external_master(self):
-        args = ["ssh", "-O", "check", f"{self.host}"]
+        args = ["ssh", "-O", "check", f"{self.host.host}"]
+
+        if self.host.jumps is not None and len(self.host.jumps) > 0:
+            args += ["-o", construct_jumps_arg(self.host.jumps)]
+
         # We don't want to confuse the use with SSHs output here, so we need to
         # capture and parse it.
         proc = subprocess.Popen(
-            args,
+            " ".join(args),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
         stdout, _ = proc.communicate(timeout=60)
         check = proc.wait()
@@ -426,12 +447,16 @@ class SSHConnection:
 
     def _start_own_master(self):
         """Starts a controlmaster connection in a temporary directory."""
-        control = os.path.join(self._tmpdir, f'control-{self.host}')
+        control = os.path.join(self._tmpdir, f'control-{self.host.host}')
 
         connect_timeout = get_ssh_connect_timeout()
 
         self._logger.debug("ControlSocket: %s", control)
-        args = ["ssh"] + SSHConnection._get_ssh_base_args()
+        args = ["ssh"] + self._get_ssh_base_args()
+
+        if self.host.jumps is not None and len(self.host.jumps) > 0:
+            args += ["-o", construct_jumps_arg(self.host.jumps)]
+
         args += [
             "-n", "-MN",
             "-o", f"ConnectTimeout={connect_timeout}",
@@ -446,31 +471,34 @@ class SSHConnection:
         self._logger.debug("Master Start command: %s", " ".join(args))
         assert self._master is None
         self._master = subprocess.Popen(
-            args,
+            " ".join(args),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            start_new_session=True,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
 
         try:
             stdout, stderr = self._master.communicate(timeout=connect_timeout)
             if self._master.returncode != 0:
                 raise ExecutionError(
-                    f"failed to connect to {self.host} with args {args}, returncode={self._master.returncode} {stdout},{stderr}"  # pylint: disable=line-too-long
+                    f"failed to connect to {self.host.host} with args {args}, returncode={self._master.returncode} {stdout},{stderr}"  # pylint: disable=line-too-long
                 )
         except subprocess.TimeoutExpired:
             self._master.kill()
             stdout, stderr = self._master.communicate()
             raise ExecutionError(
-                f"failed to connect (timeout) to {self.host} with args {args}, process killed, got {stdout},{stderr}"  # pylint: disable=line-too-long
+                f"failed to connect (timeout) to {self.host.host} with args {args}, process killed, got {stdout},{stderr}"  # pylint: disable=line-too-long
             )
 
         if not os.path.exists(control):
-            raise ExecutionError(f"no control socket to {self.host}")
+            raise ExecutionError(f"no control socket to {self.host.host}")
 
         self._socket = control
 
-        self._logger.debug('Connected to %s', self.host)
+        self._logger.debug('Connected to %s', self.host.host)
 
     def _stop_own_master(self):
         assert self._socket is not None
@@ -488,18 +516,20 @@ class SSHConnection:
 
     def _start_keepalive(self):
         """Starts a keepalive connection via the own or external master."""
-        args = ["ssh"] + self._get_ssh_args() + [self.host, "cat"]
+        args = ["ssh"] + self._get_ssh_args() + [self.host.host, "cat"]
 
         assert self._keepalive is None
         self._keepalive = subprocess.Popen(
-            args,
+            " ".join(args),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=True,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
 
-        self._logger.debug('Started keepalive for %s', self.host)
+        self._logger.debug('Started keepalive for %s', self.host.host)
 
     def _check_keepalive(self):
         return self._keepalive.poll() is None
@@ -507,7 +537,7 @@ class SSHConnection:
     def _stop_keepalive(self):
         assert self._keepalive is not None
 
-        self._logger.debug('Stopping keepalive for %s', self.host)
+        self._logger.debug('Stopping keepalive for %s', self.host.host)
 
         try:
             self._keepalive.communicate(timeout=60)
@@ -524,7 +554,7 @@ class SSHConnection:
             self._stop_keepalive()
 
             if self._socket:
-                self._logger.info("Closing SSH connection to %s", self.host)
+                self._logger.info("Closing SSH connection to %s", self.host.host)
                 self._stop_own_master()
         finally:
             self._connected = False
@@ -547,3 +577,21 @@ sshmanager = SSHConnectionManager()
 @attr.s
 class ForwardError(Exception):
     msg = attr.ib(validator=attr.validators.instance_of(str))
+
+def construct_jumps_arg(jumps: list[str]) -> str:
+    additional_args = '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
+    if jumps is None or len(jumps) < 1:
+        return ''
+    cmd = 'ProxyCommand="'
+    for i in range(len(jumps) - 1):
+        cmd += f'ssh {additional_args} -W %h:%p -o ProxyCommand='
+        for _ in range(i + 1):
+            cmd += '\\'
+        cmd += '"'
+    cmd += f'ssh {additional_args} -W %h:%p'
+    for i, jump in enumerate(jumps):
+        cmd += f' {jump}'
+        for _ in range(len(jumps) - i - 1):
+            cmd += '\\'
+        cmd += '"'
+    return cmd
