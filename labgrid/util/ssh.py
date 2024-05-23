@@ -8,12 +8,13 @@ import stat
 import shlex
 from select import select
 from functools import wraps
-from typing import Dict, Union
+from typing import Dict
 
 import attr
 from ..driver.exception import ExecutionError
 
 from .helper import get_free_port, processwrapper
+from ..util.host import Host
 
 __all__ = ['sshmanager', 'SSHConnection', 'ForwardError']
 
@@ -27,7 +28,7 @@ class SSHConnectionManager:
     should not be directly instantiated, use the exported sshmanager from this
     module instead.
     """
-    _connections: 'Dict[str, SSHConnection]' = attr.ib(
+    _connections: 'Dict[Host, SSHConnection]' = attr.ib(
         default=attr.Factory(dict),
         init=False,
         validator=attr.validators.optional(attr.validators.instance_of(dict))
@@ -37,19 +38,18 @@ class SSHConnectionManager:
         self.logger = logging.getLogger(f"{self}")
         atexit.register(self.close_all)
 
-    def get(self, host: str, sshpassword: Union[str, None] = None):
+    def get(self, host: Host):
         """Retrieve or create a new connection to a given host
 
         Arguments:
-            host (str): host to retrieve the connection for
-            sshpassword (str): remote host ssh password
+            host (Host): host to retrieve the connection for
 
         Returns:
             :obj:`SSHConnection`: the SSHConnection for the host"""
         instance = self._connections.get(host)
         if instance is None:
-            self.logger.debug("Creating SSHConnection for %s", host)
-            instance = SSHConnection(host, sshpassword=sshpassword)
+            self.logger.debug("Creating SSHConnection for %s", host.host)
+            instance = SSHConnection(host)
             instance.connect()
             self._connections[host] = instance
         return instance
@@ -75,27 +75,27 @@ class SSHConnectionManager:
     def remove_by_name(self, name):
         del self._connections[name]
 
-    def open(self, host):
+    def open(self, host: Host):
         return self.get(host)
 
-    def close(self, host):
+    def close(self, host: Host):
         con = self.get(host)
         con.disconnect()
         self.remove_connection(con)
 
-    def request_forward(self, host, dest, port):
+    def request_forward(self, host: Host, dest, port):
         con = self.get(host)
         return con.add_port_forward(dest, port)
 
-    def remove_forward(self, host, dest, port):
+    def remove_forward(self, host: Host, dest, port):
         con = self.get(host)
         con.remove_port_forward(dest, port)
 
-    def put_file(self, host, local_file, remote_file):
+    def put_file(self, host: Host, local_file, remote_file):
         con = self.get(host)
         con.put_file(local_file, remote_file)
 
-    def get_file(self, host, remote_file, local_file):
+    def get_file(self, host: Host, remote_file, local_file):
         con = self.get(host)
         con.get_file(remote_file, local_file)
 
@@ -132,8 +132,7 @@ class SSHConnection:
 
     A public identity infrastructure is assumed, no extra username or passwords
     are supported."""
-    host = attr.ib(validator=attr.validators.instance_of(str))
-    sshpassword = attr.ib(default=None, validator=attr.validators.optional(attr.validators.instance_of(str)), kw_only=True)
+    host = attr.ib(validator=attr.validators.instance_of(Host))
     _connected = attr.ib(
         default=False, init=False, validator=attr.validators.instance_of(bool)
     )
@@ -152,9 +151,12 @@ class SSHConnection:
         self._keepalive = None
         atexit.register(self.cleanup)
 
-    @staticmethod
-    def _get_ssh_base_args():
-        return ["-x", "-o", "LogLevel=ERROR"]
+    def _get_ssh_base_args(self):
+        args = ["-x", "-o", "LogLevel=ERROR"]
+        if self.host.jumps is not None and len(self.host.jumps) > 0:
+            args += ["-o", "ProxyJump={}".format(",".join(self.host.jumps))]
+        return args
+
 
     def _get_ssh_control_args(self):
         args = []
@@ -163,14 +165,14 @@ class SSHConnection:
                 "-o", "ControlMaster=no",
                 "-o", f"ControlPath={self._socket}",
             ]
-        if not self.sshpassword:
+        if not self.host.sshpassword:
             args += [
                 "-o", "PasswordAuthentication=no"
             ]
         return args
 
     def _get_ssh_args(self):
-        args = SSHConnection._get_ssh_base_args()
+        args = self._get_ssh_base_args()
         args += self._get_ssh_control_args()
         return args
 
@@ -178,10 +180,10 @@ class SSHConnection:
         """Internal function which appends the control socket and checks if the
         connection is already open"""
         if self._check_external_master():
-            self._logger.info("Using existing SSH connection to %s", self.host)
+            self._logger.info("Using existing SSH connection to %s", self.host.host)
         else:
             self._start_own_master()
-            self._logger.info("Created new SSH connection to %s", self.host)
+            self._logger.info("Created new SSH connection to %s", self.host.host)
         self._start_keepalive()
         self._connected = True
 
@@ -192,7 +194,7 @@ class SSHConnection:
         if forward:
             for item in forward:
                 complete_cmd.append(item)
-        complete_cmd.append(self.host)
+        complete_cmd.append(self.host.host)
         self._logger.debug("Running control command: %s", " ".join(complete_cmd))
         subprocess.check_call(
             complete_cmd,
@@ -204,7 +206,7 @@ class SSHConnection:
 
     @_check_connected
     def get_prefix(self):
-        return ["ssh"] + self._get_ssh_args() + [self.host]
+        return ["ssh"] + self._get_ssh_args() + [self.host.host]
 
     @_check_connected
     def run(self, command, *, codec="utf-8", decodeerrors="strict",
@@ -234,7 +236,7 @@ class SSHConnection:
         complete_cmd = ["ssh"] + self._get_ssh_args()
         if force_tty:
             complete_cmd += ["-tt"]
-        complete_cmd += [self.host, command]
+        complete_cmd += [self.host.host, command]
         self._logger.debug("Sending command: %s", " ".join(complete_cmd))
         if stderr_merge:
             stderr_pipe = subprocess.STDOUT
@@ -319,7 +321,7 @@ class SSHConnection:
         """Get a file from the remote host"""
         complete_cmd = ["scp"] + self._get_ssh_control_args()
         complete_cmd += [
-            f"{self.host}:{remote_file}",
+            f"{self.host.host}:{remote_file}",
             f"{local_file}"
         ]
         self._logger.debug("Running command: %s", complete_cmd)
@@ -335,7 +337,7 @@ class SSHConnection:
                         " ".join(['ssh'] + self._get_ssh_args())]
         complete_cmd += [
             f"{local_file}",
-            f"{self.host}:{remote_path}"
+            f"{self.host.host}:{remote_path}"
         ]
         self._logger.debug("Running command: %s", complete_cmd)
         processwrapper.check_output(
@@ -412,7 +414,7 @@ class SSHConnection:
         return self._connected and self._check_keepalive()
 
     def _check_external_master(self):
-        args = ["ssh", "-O", "check", f"{self.host}"]
+        args = ["ssh", "-O", "check", f"{self.host.host}"]
         # We don't want to confuse the use with SSHs output here, so we need to
         # capture and parse it.
         proc = subprocess.Popen(
@@ -435,12 +437,12 @@ class SSHConnection:
 
     def _start_own_master(self):
         """Starts a controlmaster connection in a temporary directory."""
-        control = os.path.join(self._tmpdir, f'control-{self.host}')
+        control = os.path.join(self._tmpdir, f'control-{self.host.host}')
 
         connect_timeout = get_ssh_connect_timeout()
 
         self._logger.debug("ControlSocket: %s", control)
-        args = ["ssh"] + SSHConnection._get_ssh_base_args()
+        args = ["ssh"] + self._get_ssh_base_args()
         args += [
             "-n", "-MN",
             "-o", f"ConnectTimeout={connect_timeout}",
@@ -448,8 +450,9 @@ class SSHConnection:
             "-o", "ControlMaster=yes",
             "-o", f"ControlPath={control}",
             # We don't want to ask the user to confirm host keys here.
-            "-o", "StrictHostKeyChecking=yes",
-            self.host,
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null",
+            self.host.host,
         ]
 
         self._logger.debug("Master Start command: %s", " ".join(args))
@@ -457,14 +460,14 @@ class SSHConnection:
 
         env = os.environ.copy()
         pass_file = ''
-        if self.sshpassword:
+        if self.host.sshpassword:
             fd, pass_file = tempfile.mkstemp()
             os.fchmod(fd, stat.S_IRWXU)
             #with openssh>=8.4 SSH_ASKPASS_REQUIRE can be used to force SSH_ASK_PASS
             #openssh<8.4 requires the DISPLAY var and a detached process with start_new_session=True
             env = {'SSH_ASKPASS': pass_file, 'DISPLAY':'', 'SSH_ASKPASS_REQUIRE':'force'}
             with open(fd, 'w') as f:
-                f.write("#!/bin/sh\necho " + shlex.quote(self.sshpassword))
+                f.write("#!/bin/sh\necho " + shlex.quote(self.host.sshpassword))
 
         self._master = subprocess.Popen(
             args,
@@ -479,24 +482,24 @@ class SSHConnection:
             stdout, stderr = self._master.communicate(timeout=connect_timeout)
             if self._master.returncode != 0:
                 raise ExecutionError(
-                    f"failed to connect to {self.host} with args {args}, returncode={self._master.returncode} {stdout},{stderr}"  # pylint: disable=line-too-long
+                    f"failed to connect to {self.host.host} with args {args}, returncode={self._master.returncode} {stdout},{stderr}"  # pylint: disable=line-too-long
                 )
         except subprocess.TimeoutExpired:
             self._master.kill()
             stdout, stderr = self._master.communicate()
             raise ExecutionError(
-                f"failed to connect (timeout) to {self.host} with args {args}, process killed, got {stdout},{stderr}"  # pylint: disable=line-too-long
+                f"failed to connect (timeout) to {self.host.host} with args {args}, process killed, got {stdout},{stderr}"  # pylint: disable=line-too-long
             )
         finally:
-            if self.sshpassword and os.path.exists(pass_file):
+            if self.host.sshpassword and os.path.exists(pass_file):
                 os.remove(pass_file)
 
         if not os.path.exists(control):
-            raise ExecutionError(f"no control socket to {self.host}")
+            raise ExecutionError(f"no control socket to {self.host.host}")
 
         self._socket = control
 
-        self._logger.debug('Connected to %s', self.host)
+        self._logger.debug('Connected to %s', self.host.host)
 
     def _stop_own_master(self):
         assert self._socket is not None
@@ -514,7 +517,7 @@ class SSHConnection:
 
     def _start_keepalive(self):
         """Starts a keepalive connection via the own or external master."""
-        args = ["ssh"] + self._get_ssh_args() + [self.host, "cat"]
+        args = ["ssh"] + self._get_ssh_args() + [self.host.host, "cat"]
 
         assert self._keepalive is None
         self._keepalive = subprocess.Popen(
@@ -525,7 +528,7 @@ class SSHConnection:
             start_new_session=True,
         )
 
-        self._logger.debug('Started keepalive for %s', self.host)
+        self._logger.debug('Started keepalive for %s', self.host.host)
 
     def _check_keepalive(self):
         return self._keepalive.poll() is None
@@ -533,7 +536,7 @@ class SSHConnection:
     def _stop_keepalive(self):
         assert self._keepalive is not None
 
-        self._logger.debug('Stopping keepalive for %s', self.host)
+        self._logger.debug('Stopping keepalive for %s', self.host.host)
 
         try:
             self._keepalive.communicate(timeout=60)
@@ -550,7 +553,7 @@ class SSHConnection:
             self._stop_keepalive()
 
             if self._socket:
-                self._logger.info("Closing SSH connection to %s", self.host)
+                self._logger.info("Closing SSH connection to %s", self.host.host)
                 self._stop_own_master()
         finally:
             self._connected = False

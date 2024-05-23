@@ -16,6 +16,24 @@ implements the dependent protocol, all drivers implement one or more protocols.
 Resources
 ---------
 
+Network Resources
+~~~~~~~~~~~~~~~~~
+
+All resources that derive :any:`NetworkResource` can have the following fields.
+
+.. code-block:: yaml
+
+   NetworkResourceName:
+     host: <remote.example.computer>
+     sshpassword: <remote-password>
+     jumps:
+      - <user@jump-host:port>
+
+Arguments:
+  - host (str): remote host the resource is available on
+  - sshpasword (str): remote host ssh password
+  - jumps (list[str]): hosts that will be jumped over when connecting
+
 Serial Ports
 ~~~~~~~~~~~~
 
@@ -604,6 +622,7 @@ Arguments:
   - username (str): username used by SSH
   - password (str, default=""): password used by SSH
   - port (int, default=22): port used by SSH
+  - jumps (list[str]): List of hosts SSH jumps over to the remote system
 
 Used by:
   - `SSHDriver`_

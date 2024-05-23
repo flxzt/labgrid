@@ -12,7 +12,7 @@ import logging
 
 from labgrid.util import diff_dict, flat_dict, filter_dict
 from labgrid.util.helper import get_free_port
-from labgrid.util.ssh import ForwardError, SSHConnection, sshmanager
+from labgrid.util.ssh import ForwardError, SSHConnection, Host, sshmanager
 from labgrid.util.proxy import proxymanager
 from labgrid.util.managedfile import ManagedFile
 from labgrid.driver.exception import ExecutionError
@@ -22,14 +22,14 @@ from labgrid.util import diff_dict, flat_dict, filter_dict, find_dict
 
 @pytest.fixture
 def connection_localhost():
-    con = SSHConnection("localhost")
+    con = SSHConnection(Host("localhost"))
     con.connect()
     yield con
     con.disconnect()
 
 @pytest.fixture
 def connection_localhost_no_cleanup():
-    con = SSHConnection("localhost")
+    con = SSHConnection(Host("localhost"))
     con.connect()
     return con
 
@@ -81,13 +81,11 @@ def test_sshmanager_get():
     assert sshmanager != None
 
 def test_sshconnection_get():
-    from labgrid.util.ssh import SSHConnection
-    SSHConnection("localhost")
+    SSHConnection(Host("localhost"))
 
 @pytest.mark.skipif(not which("ssh"), reason="ssh not available")
 def test_sshconnection_inactive_raise():
-    from labgrid.util.ssh import SSHConnection
-    con = SSHConnection("localhost")
+    con = SSHConnection(Host("localhost"))
     with pytest.raises(ExecutionError):
         con.run_check("echo Hallo")
 
@@ -211,7 +209,7 @@ def test_sshconnection_cleanup(connection_localhost_no_cleanup):
 
 @pytest.mark.localsshmanager
 def test_sshmanager_open(sshmanager_fix):
-    con = sshmanager_fix.open("localhost")
+    con = sshmanager_fix.open(Host("localhost"))
 
     assert isinstance(con, SSHConnection)
 
@@ -230,21 +228,21 @@ def test_sshmanager_remove_forward(sshmanager_fix):
 
 @pytest.mark.localsshmanager
 def test_sshmanager_close(sshmanager_fix):
-    con = sshmanager_fix.open("localhost")
+    con = sshmanager_fix.open(Host("localhost"))
 
     assert isinstance(con, SSHConnection)
     sshmanager_fix.close("localhost")
 
 @pytest.mark.localsshmanager
 def test_sshmanager_remove_raise(sshmanager_fix):
-    con = sshmanager_fix.open("localhost")
+    con = sshmanager_fix.open(Host("localhost"))
     con.connect()
     with pytest.raises(ExecutionError):
         sshmanager_fix.remove_connection(con)
 
 @pytest.mark.skipif(not which("ssh"), reason="ssh not available")
 def test_sshmanager_add_duplicate(sshmanager_fix):
-    host = 'localhost'
+    host = Host('localhost')
     con = SSHConnection(host)
     sshmanager_fix.add_connection(con)
     con_there = sshmanager_fix._connections[host]
@@ -255,7 +253,7 @@ def test_sshmanager_add_duplicate(sshmanager_fix):
 
 @pytest.mark.skipif(not which("ssh"), reason="ssh not available")
 def test_sshmanager_add_new(sshmanager_fix):
-    host = 'other_host'
+    host = Host('other_host')
     con = SSHConnection(host)
     sshmanager_fix.add_connection(con)
     con_now = sshmanager_fix._connections[host]
@@ -264,7 +262,7 @@ def test_sshmanager_add_new(sshmanager_fix):
 
 @pytest.mark.skipif(not which("ssh"), reason="ssh not available")
 def test_sshmanager_invalid_host_raise():
-    con = SSHConnection("nosuchhost.notavailable")
+    con = SSHConnection(Host("nosuchhost.notavailable"))
     with pytest.raises(ExecutionError):
         con.connect()
 
