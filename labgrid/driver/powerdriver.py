@@ -74,7 +74,7 @@ class SiSPMPowerDriver(Driver, PowerResetMixin, PowerProtocol):
             self.tool = 'sispmctl'
 
     def _get_sispmctl_prefix(self):
-        return self.port.command_prefix + [
+        return self.port.command_prefix() + [
             self.tool,
             "-U", f"{self.port.busnum:03d}:{self.port.devnum:03d}",
         ]
@@ -291,7 +291,7 @@ class YKUSHPowerDriver(Driver, PowerResetMixin, PowerProtocol):
             "-s", f"{self.port.serial}",
             "-u", f"{self.port.index}"
         ]
-        processwrapper.check_output(self.port.command_prefix + cmd)
+        processwrapper.check_output(self.port.command_prefix() + cmd)
 
     @Driver.check_active
     @step()
@@ -301,7 +301,7 @@ class YKUSHPowerDriver(Driver, PowerResetMixin, PowerProtocol):
             "-s", f"{self.port.serial}",
             "-d", f"{self.port.index}"
         ]
-        processwrapper.check_output(self.port.command_prefix + cmd)
+        processwrapper.check_output(self.port.command_prefix() + cmd)
 
     @Driver.check_active
     @step()
@@ -317,7 +317,7 @@ class YKUSHPowerDriver(Driver, PowerResetMixin, PowerProtocol):
             "-s", f"{self.port.serial}",
             "-g", f"{self.port.index}"
         ]
-        res = processwrapper.check_output(self.port.command_prefix + cmd)
+        res = processwrapper.check_output(self.port.command_prefix() + cmd)
         res = res.decode("utf-8")
 
         # the example of ykushcmd -g like below:
@@ -349,7 +349,7 @@ class USBPowerDriver(Driver, PowerResetMixin, PowerProtocol):
             self.tool = 'uhubctl'
 
     def _switch(self, cmd):
-        cmd = self.hub.command_prefix + [
+        cmd = self.hub.command_prefix() + [
             self.tool,
             "-l", self.hub.path,
             "-p", str(self.hub.index),
@@ -377,7 +377,7 @@ class USBPowerDriver(Driver, PowerResetMixin, PowerProtocol):
 
     @Driver.check_active
     def get(self):
-        cmd = self.hub.command_prefix + [
+        cmd = self.hub.command_prefix() + [
             self.tool,
             "-l", self.hub.path,
             "-p", str(self.hub.index),

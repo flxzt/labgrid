@@ -38,7 +38,7 @@ class LXAUSBMuxDriver(Driver):
             else:
                 raise ExecutionError(f"Link '{link}' not supported by LXAUSBMuxDriver")
 
-        cmd = self.mux.command_prefix + [
+        cmd = self.mux.command_prefix() + [
             self.tool,
             "--path",
             self.mux.path,

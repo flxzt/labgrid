@@ -128,7 +128,7 @@ class USBVideoDriver(Driver, VideoProtocol):
         caps = self.select_caps(caps_hint)
         pipeline = self.get_pipeline(self.video.path, caps, controls)
 
-        tx_cmd = self.video.command_prefix + ["gst-launch-1.0", "-q"]
+        tx_cmd = self.video.command_prefix() + ["gst-launch-1.0", "-q"]
         tx_cmd += pipeline.split()
         rx_cmd = ["gst-launch-1.0"]
         rx_cmd += "playbin3 uri=fd://0".split()

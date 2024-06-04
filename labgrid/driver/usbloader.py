@@ -42,7 +42,7 @@ class MXSUSBDriver(Driver, BootstrapProtocol):
         mf.sync_to_resource()
 
         processwrapper.check_output(
-            self.loader.command_prefix + [self.tool, "0", mf.get_remote_path()],
+            self.loader.command_prefix() + [self.tool, "0", mf.get_remote_path()],
             print_on_silent_log=True
         )
 
@@ -79,7 +79,7 @@ class IMXUSBDriver(Driver, BootstrapProtocol):
         mf.sync_to_resource()
 
         processwrapper.check_output(
-            self.loader.command_prefix +
+            self.loader.command_prefix() +
             [self.tool, "-p", str(self.loader.path), "-c", mf.get_remote_path()],
             print_on_silent_log=True
         )
@@ -121,7 +121,7 @@ class RKUSBDriver(Driver, BootstrapProtocol):
         while True:
             try:
                 processwrapper.check_output(
-                    self.loader.command_prefix +
+                    self.loader.command_prefix() +
                     [self.tool, 'db', mf.get_remote_path()],
                     print_on_silent_log=True
                 )
@@ -139,7 +139,7 @@ class RKUSBDriver(Driver, BootstrapProtocol):
         while True:
             try:
                 processwrapper.check_output(
-                    self.loader.command_prefix +
+                    self.loader.command_prefix() +
                     [self.tool, 'wl', '0x40', mf.get_remote_path()],
                     print_on_silent_log=True
                 )
@@ -184,7 +184,7 @@ class UUUDriver(Driver, BootstrapProtocol):
         cmd = ['-b', self.script] if self.script else []
 
         processwrapper.check_output(
-            self.loader.command_prefix + [self.tool] + cmd + [mf.get_remote_path()],
+            self.loader.command_prefix() + [self.tool] + cmd + [mf.get_remote_path()],
             print_on_silent_log=True
         )
 
@@ -225,7 +225,7 @@ class BDIMXUSBDriver(Driver, BootstrapProtocol):
         mf.sync_to_resource()
 
         processwrapper.check_output(
-            self.loader.command_prefix + [
+            self.loader.command_prefix() + [
                 self.tool,
                 f"--bus={self.loader.busnum}",
                 f"--device={self.loader.devnum}",

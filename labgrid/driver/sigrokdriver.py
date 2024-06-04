@@ -40,7 +40,7 @@ class SigrokCommon(Driver):
     def _create_tmpdir(self):
         if isinstance(self.sigrok, NetworkSigrokUSBDevice):
             self._tmpdir = f'/tmp/labgrid-sigrok-{uuid.uuid1()}'
-            command = self.sigrok.command_prefix + [
+            command = self.sigrok.command_prefix() + [
                 'mkdir', '-p', self._tmpdir
             ]
             self.logger.debug("Tmpdir command: %s", command)
@@ -59,7 +59,7 @@ class SigrokCommon(Driver):
 
     def _delete_tmpdir(self):
         if isinstance(self.sigrok, NetworkSigrokUSBDevice):
-            command = self.sigrok.command_prefix + [
+            command = self.sigrok.command_prefix() + [
                 'rm', '-r', self._tmpdir
             ]
             self.logger.debug("Tmpdir command: %s", command)
@@ -89,7 +89,7 @@ class SigrokCommon(Driver):
             prefix += ["-d", self.sigrok.driver]
         if self.sigrok.channels:
             prefix += ["-C", self.sigrok.channels]
-        return self.sigrok.command_prefix + prefix
+        return self.sigrok.command_prefix() + prefix
 
     @Driver.check_active
     @step(title='call', args=['args'])
@@ -106,7 +106,7 @@ class SigrokCommon(Driver):
     @Driver.check_active
     @step(title='call', args=['args'])
     def _call(self, *args):
-        combined = self.sigrok.command_prefix + [self.tool]
+        combined = self.sigrok.command_prefix() + [self.tool]
         if self.sigrok.channels:
             combined += ["-C", self.sigrok.channels]
         combined += list(args)
@@ -145,7 +145,7 @@ class SigrokDriver(SigrokCommon):
         filename = os.path.join(self._tmpdir, self._basename)
         cmd.append(filename)
         self._call_with_driver(*cmd)
-        args = self.sigrok.command_prefix + ['test', '-e', filename]
+        args = self.sigrok.command_prefix() + ['test', '-e', filename]
 
         while subprocess.call(args):
             # in case the sigrok-cli call fails, this would wait forever.
@@ -224,7 +224,7 @@ class SigrokDriver(SigrokCommon):
             filename = os.path.join(self._tmpdir, self._basename)
         else:
             filename = os.path.abspath(filename)
-        check_file(filename, command_prefix=self.sigrok.command_prefix)
+        check_file(filename, command_prefix=self.sigrok.command_prefix())
         args.insert(0, filename)
         if isinstance(args, str):
             args = args.split(" ")

@@ -29,7 +29,7 @@ class DediprogFlashDriver(Driver):
             self.tool = 'dpcmd'
 
     def _get_dediprog_prefix(self):
-        return self.flasher.command_prefix + [self.tool]
+        return self.flasher.command_prefix() + [self.tool]
 
     def on_activate(self):
         pass

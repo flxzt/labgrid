@@ -28,9 +28,9 @@ class RawNetworkInterfaceDriver(Driver):
     def _wrap_command(self, args):
         wrapper = ["sudo", "labgrid-raw-interface"]
 
-        if self.iface.command_prefix:
+        if self.iface.command_prefix():
             # add ssh prefix, convert command passed via ssh (including wrapper) to single argument
-            return self.iface.command_prefix + [" ".join(wrapper + args)]
+            return self.iface.command_prefix() + [" ".join(wrapper + args)]
         else:
             # keep wrapper and args as-is
             return wrapper + args
@@ -170,7 +170,7 @@ class RawNetworkInterfaceDriver(Driver):
         """
         Returns basic interface statistics of bound network interface resource.
         """
-        cmd = self.iface.command_prefix + [
+        cmd = self.iface.command_prefix() + [
             "ip",
             "--json",
             "-stats", "-stats",
