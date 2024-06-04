@@ -108,7 +108,7 @@ class USBStorageDriver(Driver):
 
                 args = ["cp", "-T", copied_sources[0], target_path]
 
-            processwrapper.check_output(self.storage.command_prefix + args)
+            processwrapper.check_output(self.storage.command_prefix() + args)
             self.proxy.unmount(self.devpath)
         except:
             # We are going to die with an exception anyway, so no point in waiting
@@ -192,7 +192,7 @@ class USBStorageDriver(Driver):
             raise ValueError
 
         processwrapper.check_output(
-            self.storage.command_prefix + args,
+            self.storage.command_prefix() + args,
             print_on_silent_log=True
         )
 
@@ -225,7 +225,7 @@ class USBStorageDriver(Driver):
             int: size in bytes
         """
         args = ["cat", f"/sys/class/block/{self._get_devpath(partition)[5:]}/size"]
-        size = subprocess.check_output(self.storage.command_prefix + args)
+        size = subprocess.check_output(self.storage.command_prefix() + args)
         try:
             return int(size) * 512
         except ValueError:

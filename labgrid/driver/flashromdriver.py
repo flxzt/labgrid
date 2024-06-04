@@ -30,7 +30,7 @@ class FlashromDriver(Driver, BootstrapProtocol):
         self.logger.debug('Tool %s', self.tool)
 
     def _get_flashrom_prefix(self):
-        return self.flashrom_resource.command_prefix+[
+        return self.flashrom_resource.command_prefix()+[
             self.tool
         ]
 

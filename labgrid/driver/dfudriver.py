@@ -23,7 +23,7 @@ class DFUDriver(Driver):
             self.tool = 'dfu-util'
 
     def _get_dfu_prefix(self):
-        return self.dfu.command_prefix + [
+        return self.dfu.command_prefix() + [
             self.tool,
             "-p", self.dfu.path,
         ]

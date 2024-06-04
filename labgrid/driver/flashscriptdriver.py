@@ -55,5 +55,5 @@ class FlashScriptDriver(Driver):
 
         self.logger.debug("Running command '%s'", " ".join(cmd))
         processwrapper.check_output(
-            self.device.command_prefix + cmd, print_on_silent_log=True
+            self.device.command_prefix() + cmd, print_on_silent_log=True
         )

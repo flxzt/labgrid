@@ -34,9 +34,11 @@ class Resource(BindingMixin):
             logger_name += f":{self.name}"
         self.logger = logging.getLogger(logger_name)
 
-    @property
-    def command_prefix(self):
-        return []
+    def command_prefix(self, additional: list[str] | None = None):
+        if additional is not None:
+            return additional
+        else:
+            return []
 
     def wrap_command(self, command):
         """
@@ -89,8 +91,7 @@ class NetworkResource(Resource):
     """
     host = attr.ib(validator=attr.validators.instance_of(str))
 
-    @property
-    def command_prefix(self):
+    def command_prefix(self, additional: list[str] | None = None):
         host = self.host
 
         if hasattr(self, 'extra'):
@@ -99,6 +100,8 @@ class NetworkResource(Resource):
 
         conn = sshmanager.get(host)
         prefix = conn.get_prefix()
+        if additional is not None:
+            prefix += additional
 
         return prefix + ['--']
 
@@ -109,7 +112,7 @@ class NetworkResource(Resource):
         Must stay compatible with Resource.wrap_command().
         """
         shargs = [shlex.quote(a) for a in command]
-        return self.command_prefix + shargs
+        return self.command_prefix() + shargs
 
 
 @attr.s(eq=False)
