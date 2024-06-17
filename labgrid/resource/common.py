@@ -88,6 +88,7 @@ class NetworkResource(Resource):
     Args:
         host (str): remote host the resource is available on
         sshpassword (str): remote host ssh password
+        jumps (list[str]): hosts that will be jumped over when connecting
     """
     host = attr.ib(validator=attr.validators.instance_of(str))
     sshpassword = attr.ib(default=None, validator=attr.validators.optional(attr.validators.instance_of(str)), kw_only=True)
