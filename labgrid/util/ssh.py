@@ -153,11 +153,8 @@ class SSHConnection:
 
     def _get_ssh_base_args(self):
         args = ["-x", "-o", "LogLevel=ERROR"]
-        if self.host.jumps is not None:
-            for jump in self.host.jumps:
-                args += [
-                    "-o", f"ProxyJump={jump}"
-                ]
+        if self.host.jumps is not None and len(self.host.jumps) > 0:
+            args += ["-o", "ProxyJump={}".format(",".join(self.host.jumps))]
         return args
 
 
