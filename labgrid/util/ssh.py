@@ -153,8 +153,6 @@ class SSHConnection:
 
     def _get_ssh_base_args(self):
         args = ["-x", "-o", "LogLevel=ERROR"]
-        if self.host.jumps is not None and len(self.host.jumps) > 0:
-            args += ["-o", construct_jumps_arg(self.host.jumps)]
         return args
 
 
@@ -169,6 +167,8 @@ class SSHConnection:
             args += [
                 "-o", "PasswordAuthentication=no"
             ]
+        if self.host.jumps is not None and len(self.host.jumps) > 0:
+            args += ["-o", construct_jumps_arg(self.host.jumps)]
         return args
 
     def _get_ssh_args(self):
@@ -197,11 +197,13 @@ class SSHConnection:
         complete_cmd.append(self.host.host)
         self._logger.debug("Running control command: %s", " ".join(complete_cmd))
         subprocess.check_call(
-            complete_cmd,
+            " ".join(complete_cmd),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             timeout=2,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
 
     @_check_connected
@@ -244,8 +246,12 @@ class SSHConnection:
             stderr_pipe = subprocess.PIPE
         try:
             sub = subprocess.Popen(
-                complete_cmd, stdout=subprocess.PIPE, stderr=stderr_pipe,
-                stdin=subprocess.DEVNULL
+                " ".join(complete_cmd),
+                stdout=subprocess.PIPE,
+                stderr=stderr_pipe,
+                stdin=subprocess.DEVNULL,
+                # The ProxyCommand argument used for jumps needs this.
+                shell=True
             )
         except:
             raise ExecutionError(
@@ -326,8 +332,10 @@ class SSHConnection:
         ]
         self._logger.debug("Running command: %s", complete_cmd)
         subprocess.check_call(
-            complete_cmd,
+            " ".join(complete_cmd),
             stdin=subprocess.DEVNULL,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
 
     @_check_connected
@@ -341,9 +349,10 @@ class SSHConnection:
         ]
         self._logger.debug("Running command: %s", complete_cmd)
         processwrapper.check_output(
-            complete_cmd,
+            " ".join(complete_cmd),
             stdin=subprocess.DEVNULL,
-            print_on_silent_log=True
+            print_on_silent_log=True,
+            shell=True
         )
 
     @_check_connected
@@ -415,13 +424,19 @@ class SSHConnection:
 
     def _check_external_master(self):
         args = ["ssh", "-O", "check", f"{self.host.host}"]
+
+        if self.host.jumps is not None and len(self.host.jumps) > 0:
+            args += ["-o", construct_jumps_arg(self.host.jumps)]
+
         # We don't want to confuse the use with SSHs output here, so we need to
         # capture and parse it.
         proc = subprocess.Popen(
-            args,
+            " ".join(args),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
         stdout, _ = proc.communicate(timeout=60)
         check = proc.wait()
@@ -443,6 +458,10 @@ class SSHConnection:
 
         self._logger.debug("ControlSocket: %s", control)
         args = ["ssh"] + self._get_ssh_base_args()
+
+        if self.host.jumps is not None and len(self.host.jumps) > 0:
+            args += ["-o", construct_jumps_arg(self.host.jumps)]
+
         args += [
             "-n", "-MN",
             "-o", f"ConnectTimeout={connect_timeout}",
@@ -470,12 +489,14 @@ class SSHConnection:
                 f.write("#!/bin/sh\necho " + shlex.quote(self.host.sshpassword))
 
         self._master = subprocess.Popen(
-            args,
+            " ".join(args),
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            start_new_session=True
+            start_new_session=True,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
 
         try:
@@ -521,11 +542,13 @@ class SSHConnection:
 
         assert self._keepalive is None
         self._keepalive = subprocess.Popen(
-            args,
+            " ".join(args),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=True,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
         )
 
         self._logger.debug('Started keepalive for %s', self.host.host)

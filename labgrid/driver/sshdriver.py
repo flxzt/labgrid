@@ -152,13 +152,16 @@ class SSHDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol):
                 f.write("#!/bin/sh\necho " + shlex.quote(self._get_password()))
 
         self.logger.debug(f"Starting ssh master with args: '{args}', env '{env}'") # pylint: disable=W1203
-        self.process = subprocess.Popen(" ".join(args), env=env,
-                                        stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT,
-                                        stdin=subprocess.DEVNULL,
-                                        # The ProxyCommand subcommand needs this.
-                                        shell=True,
-                                        start_new_session=True)
+        self.process = subprocess.Popen(
+            " ".join(args),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            # The ProxyCommand argument used for jumps needs this.
+            shell=True
+        )
 
         try:
             subprocess_timeout = timeout + 5
