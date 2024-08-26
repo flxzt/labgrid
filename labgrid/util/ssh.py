@@ -154,7 +154,7 @@ class SSHConnection:
     def _get_ssh_base_args(self):
         args = ["-x", "-o", "LogLevel=ERROR"]
         if self.host.jumps is not None and len(self.host.jumps) > 0:
-            args += ["-o", "ProxyJump={}".format(",".join(self.host.jumps))]
+            args += ["-o", construct_jumps_arg(self.host.jumps)]
         return args
 
 
@@ -576,3 +576,21 @@ sshmanager = SSHConnectionManager()
 @attr.s
 class ForwardError(Exception):
     msg = attr.ib(validator=attr.validators.instance_of(str))
+
+def construct_jumps_arg(jumps: list[str]) -> str:
+    additional_args = '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'
+    if jumps is None or len(jumps) < 1:
+        return ''
+    cmd = 'ProxyCommand="'
+    for i in range(len(jumps) - 1):
+        cmd += f'ssh {additional_args} -W %h:%p -o ProxyCommand='
+        for _ in range(i + 1):
+            cmd += '\\'
+        cmd += '"'
+    cmd += f'ssh {additional_args} -W %h:%p'
+    for i, jump in enumerate(jumps):
+        cmd += f' {jump}'
+        for _ in range(len(jumps) - i - 1):
+            cmd += '\\'
+        cmd += '"'
+    return cmd

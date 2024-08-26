@@ -622,7 +622,7 @@ Arguments:
   - username (str): username used by SSH
   - password (str, default=""): password used by SSH
   - port (int, default=22): port used by SSH
-  - jumps (list[str]): List of hosts SSH jumps over to the remote system
+  - jumps (list[str]): List of hosts to jump over to the remote system
 
 Used by:
   - `SSHDriver`_
@@ -1739,6 +1739,7 @@ Arguments:
     will explicitly use the SCP protocol for file transfers instead of scp's default protocol
   - username (str, default=username from `NetworkService`_): username used by SSH
   - password (str, default=password from `NetworkService`_): password used by SSH
+  - jumps (list(str), default=jumps from `NetworkService`_): hosts to jump over
 
 UBootDriver
 ~~~~~~~~~~~

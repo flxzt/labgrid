@@ -12,6 +12,9 @@ from functools import cached_property
 
 import attr
 
+from labgrid.exceptions import InvalidConfigError
+from labgrid.util.ssh import construct_jumps_arg
+
 from ..factory import target_factory
 from ..protocol import CommandProtocol, FileTransferProtocol
 from .commandmixin import CommandMixin
@@ -37,6 +40,7 @@ class SSHDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol):
     explicit_scp_mode = attr.ib(default=False, validator=attr.validators.instance_of(bool))
     username = attr.ib(default="", validator=attr.validators.instance_of(str))
     password = attr.ib(default="", validator=attr.validators.instance_of(str))
+    jumps = attr.ib(default=None, validator=attr.validators.optional(attr.validators.instance_of(list)), kw_only=True)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -50,6 +54,10 @@ class SSHDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol):
         """Get the password from this class or from NetworkService"""
         return self.password or self.networkservice.password
 
+    def _get_jumps(self):
+        """Get the jumps from this class or from NetworkService"""
+        return self.jumps or self.networkservice.jumps
+
     def on_activate(self):
         self.ssh_prefix = ["-o", "LogLevel=ERROR"]
         if self.keyfile:
@@ -59,8 +67,6 @@ class SSHDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol):
             self.ssh_prefix += ["-i", keyfile_path ]
         if not self._get_password():
             self.ssh_prefix += ["-o", "PasswordAuthentication=no"]
-        if self.networkservice.jumps is not None and len(self.networkservice.jumps) > 0:
-            self.ssh_prefix += ["-o", "ProxyJump={}".format(",".join(self.networkservice.jumps))]
 
         self.control = self._start_own_master()
         self.ssh_prefix += ["-F", "none"]
@@ -113,6 +119,9 @@ class SSHDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol):
                  "-o", "ServerAliveInterval=15", "-MN", "-S", control.replace('%', '%%'), "-p",
                  str(self.networkservice.port), "-l", self._get_username(),
                  self.networkservice.address]
+        jumps = self._get_jumps()
+        if jumps is not None and len(jumps) > 0:
+            args += ["-o", construct_jumps_arg(jumps)]
 
         # proxy via the exporter if we have an ifname suffix
         address = self.networkservice.address
@@ -125,6 +134,8 @@ class SSHDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol):
 
         proxy_cmd = proxymanager.get_command(self.networkservice, address, self.networkservice.port, ifname)
         if proxy_cmd:  # only proxy if needed
+            if jumps is not None and len(jumps) > 0:
+                raise InvalidConfigError("Jumps cannot be used in combination with option 'proxy'")
             args += [
                 "-o", f"ProxyCommand={' '.join(proxy_cmd)} 2>{self.tmpdir}/proxy-stderr"
             ]
@@ -140,10 +151,13 @@ class SSHDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol):
             with open(fd, 'w') as f:
                 f.write("#!/bin/sh\necho " + shlex.quote(self._get_password()))
 
-        self.process = subprocess.Popen(args, env=env,
+        self.logger.debug(f"Starting ssh master with args: '{args}', env '{env}'") # pylint: disable=W1203
+        self.process = subprocess.Popen(" ".join(args), env=env,
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT,
                                         stdin=subprocess.DEVNULL,
+                                        # The ProxyCommand subcommand needs this.
+                                        shell=True,
                                         start_new_session=True)
 
         try:
@@ -152,8 +166,11 @@ class SSHDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol):
             if return_value != 0:
                 stdout, _ = self.process.communicate(timeout=subprocess_timeout)
                 stdout = stdout.split(b"\n")
+
+                warn_msg = f"ssh: return-code: {return_value} : "
                 for line in stdout:
-                    self.logger.warning("ssh: %s", line.rstrip().decode(encoding="utf-8", errors="replace"))
+                    warn_msg += line.rstrip().decode(encoding="utf-8", errors="replace")
+                self.logger.warning(warn_msg)
 
                 try:
                     with open(f'{self.tmpdir}/proxy-stderr') as proxy_err_fd:
